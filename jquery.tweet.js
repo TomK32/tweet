@@ -3,6 +3,7 @@
   $.fn.tweet = function(o){
     var s = {
       username: ["seaofclouds"],              // [string]   required, unless you want to display our tweets. :) it can be an array, just do ["username1","username2","etc"]
+      method: "search",
       avatar_size: null,                      // [integer]  height and width of avatar if displayed (48px max)
       count: 3,                               // [integer]  how many tweets to display?
       intro_text: null,                       // [string]   do you want text BEFORE your your tweets?
@@ -15,6 +16,7 @@
       auto_join_text_url: "i was looking at", // [string]   auto tense for urls: "i was looking at" http:...
       loading_text: null,                     // [string]   optional loading text, displayed while tweets load
       query: null                             // [string]   optional search query
+      
     };
 
     $.fn.extend({
@@ -99,47 +101,60 @@
       if(s.query) {
         query += 'q='+s.query;
       }
-      query += '&q=from:'+s.username.join('%20OR%20from:');
-      var url = 'http://search.twitter.com/search.json?&'+query+'&rpp='+s.count+'&callback=?';
+      if (s.method == 'search') {
+        query += '&q=from:'+s.username.join('%20OR%20from:');
+        var url = 'http://search.twitter.com/search.json?&'+query+'&rpp='+s.count+'&callback=?';
+      } else {
+        var url = 'http://twitter.com/' + s.method + '.json'+'?callback=?';
+      }
       if (s.loading_text) $(this).append(loading);
-      $.getJSON(url, function(data){
-        if (s.loading_text) loading.remove();
-        if (s.intro_text) list.before(intro);
-        $.each(data.results, function(i,item){
-          // auto join text based on verb tense and content
-          if (s.join_text == "auto") {
-            if (item.text.match(/^(@([A-Za-z0-9-_]+)) .*/i)) {
-              var join_text = s.auto_join_text_reply;
-            } else if (item.text.match(/(^\w+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&\?\/.=]+) .*/i)) {
-              var join_text = s.auto_join_text_url;
-            } else if (item.text.match(/^((\w+ed)|just) .*/im)) {
-              var join_text = s.auto_join_text_ed;
-            } else if (item.text.match(/^(\w*ing) .*/i)) {
-              var join_text = s.auto_join_text_ing;
-            } else {
-              var join_text = s.auto_join_text_default;
-            }
-          } else {
-            var join_text = s.join_text;
-          };
-
-          var join_template = '<span class="tweet_join"> '+join_text+' </span>';
-          var join = ((s.join_text) ? join_template : ' ')
-          var avatar_template = '<a class="tweet_avatar" href="http://twitter.com/'+ item.from_user+'"><img src="'+item.profile_image_url+'" height="'+s.avatar_size+'" width="'+s.avatar_size+'" alt="'+item.from_user+'\'s avatar" border="0"/></a>';
-          var avatar = (s.avatar_size ? avatar_template : '')
-          var date = '<a href="http://twitter.com/'+item.from_user+'/statuses/'+item.id+'" title="view tweet on twitter">'+relative_time(item.created_at)+'</a>';
-          var text = '<span class="tweet_text">' +$([item.text]).linkUrl().linkUser().linkHash().makeHeart().capAwesome().capEpic()[0]+ '</span>';
+      try {
+        $.getJSON(url, function(data){
+          if (s.loading_text) loading.remove();
+          if (s.intro_text) list.before(intro);
+          results = data;
+          if(data.results){ results = data.results};
           
-          // until we create a template option, arrange the items below to alter a tweet's display.
-          list.append('<li>' + avatar + date + join + text + '</li>');
+          $.each(results, function(i,item){
+            if(i >= s.count) { return; }
+            // auto join text based on verb tense and content
+            if (s.join_text == "auto") {
+              if (item.text.match(/^(@([A-Za-z0-9-_]+)) .*/i)) {
+                var join_text = s.auto_join_text_reply;
+              } else if (item.text.match(/(^\w+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&\?\/.=]+) .*/i)) {
+                var join_text = s.auto_join_text_url;
+              } else if (item.text.match(/^((\w+ed)|just) .*/im)) {
+                var join_text = s.auto_join_text_ed;
+              } else if (item.text.match(/^(\w*ing) .*/i)) {
+                var join_text = s.auto_join_text_ing;
+              } else {
+                var join_text = s.auto_join_text_default;
+              }
+            } else {
+              var join_text = s.join_text;
+            };
+            // e.g. follower.json returns a user object different from search
+            if (item.user) {
+              item.profile_image_url = item.user.profile_image_url;
+              item.from_user = item.user.screen_name;
+            }
+            var join_template = '<span class="tweet_join"> '+join_text+' </span>';
+            var join = ((s.join_text) ? join_template : ' ')
+            var avatar_template = '<a class="tweet_avatar" href="http://twitter.com/'+ item.from_user+'"><img src="'+item.profile_image_url+'" height="'+s.avatar_size+'" width="'+s.avatar_size+'" alt="'+item.from_user+'\'s avatar" border="0"/></a>';
+            var avatar = (s.avatar_size ? avatar_template : '')
+            var date = '<a href="http://twitter.com/'+item.from_user+'/statuses/'+item.id+'" title="view tweet on twitter">'+relative_time(item.created_at)+'</a>';
+            var text = '<span class="tweet_text">' +$([item.text]).linkUrl().linkUser().linkHash().makeHeart().capAwesome().capEpic()[0]+ '</span>';
+          
+            // until we create a template option, arrange the items below to alter a tweet's display.
+            list.append('<li>' + avatar + date + join + text + '</li>');
 
-          list.children('li:first').addClass('tweet_first');
-          list.children('li:odd').addClass('tweet_even');
-          list.children('li:even').addClass('tweet_odd');
+            list.children('li:first').addClass('tweet_first');
+            list.children('li:odd').addClass('tweet_even');
+            list.children('li:even').addClass('tweet_odd');
+          });
+          if (s.outro_text) list.after(outro);
         });
-        if (s.outro_text) list.after(outro);
-      });
-
+      } catch(err){$(this).html("<em>Couldn't read from twitter.</em>")}
     });
   };
 })(jQuery);
